@@ -1,0 +1,42 @@
+#!/usr/bin/with-contenv bash
+
+# DISPLAY is necessary for start
+[ -z "${DISPLAY}" ] \
+&& ( echo -e "\e[31mERROR: Please set DISPLAY variable.\e[39m"; kill 1; exit 1 )
+
+# script for finalizing must have executing bit.
+[ ! -z "${JIBRI_FINALIZE_RECORDING_SCRIPT_PATH}" ] \
+&& [ ! -x "${JIBRI_FINALIZE_RECORDING_SCRIPT_PATH}" ] \
+&& chmod +x ${JIBRI_FINALIZE_RECORDING_SCRIPT_PATH}
+
+# INIT dbus for pulseaudio
+dbus-uuidgen > /var/lib/dbus/machine-id
+mkdir -p /var/run/dbus
+dbus-daemon --config-file=/usr/share/dbus-1/system.conf --print-address
+
+pulseaudio -D --exit-idle-time=-1 --system --log-target=stderr
+#padsp -- dsd -i /dev/dsp -o /dev/dsp -fa -ma
+# Load the virtual sink and set it as default
+pacmd load-module module-virtual-sink sink_name=v1
+pacmd set-default-sink v1
+# set the monitor of v1 sink to be the default source
+pacmd set-default-source v1.monitor
+
+su jibri -c /pulseaudio.sh
+
+# set rundom jibri nickname for the instance if is not set
+[ -z "${JIBRI_INSTANCE_ID}" ] && export JIBRI_INSTANCE_ID=$(date +%N)
+
+# always recreate configs
+tpl /defaults/config.json > /etc/jitsi/jibri/config.json
+tpl /defaults/logging.properties > /etc/jitsi/jibri/logging.properties
+
+# make recording dir
+[ -z "${JIBRI_RECORDING_DIR}" ] && export JIBRI_RECORDING_DIR=/config/recordings
+mkdir -p ${JIBRI_RECORDING_DIR}
+chown -R jibri ${JIBRI_RECORDING_DIR}
+
+# make logs dir
+[ -z "${JIBRI_LOGS_DIR}" ] && export JIBRI_LOGS_DIR=/config/logs
+mkdir -p ${JIBRI_LOGS_DIR}
+chown -R jibri ${JIBRI_LOGS_DIR}
